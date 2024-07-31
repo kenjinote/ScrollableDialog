@@ -23,12 +23,6 @@ INT_PTR CALLBACK DialogProc1(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 			break;
 		}
 		break;
-	case WM_MOUSEWHEEL:
-		{
-			HWND hParent = GetParent(hDlg);
-			SendMessage(hParent, WM_MOUSEWHEEL, wParam, lParam);
-		}
-		break;
 	default:
 		return FALSE;
 	}
@@ -38,10 +32,10 @@ INT_PTR CALLBACK DialogProc1(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 INT_PTR CALLBACK DialogProc2(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	static HWND hDialog1;
-	static int nWidth1;
-	static int nHeight1;
-	static int nWidth2;
-	static int nHeight2;
+	static int hChildDialogWidth;
+	static int hChildDialogHeight;
+	static int xPos;
+	static int yPos;
 	switch (msg)
 	{
 	case WM_INITDIALOG:
@@ -49,26 +43,33 @@ INT_PTR CALLBACK DialogProc2(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 			hDialog1 = CreateDialog(GetModuleHandle(0), MAKEINTRESOURCE(IDD_DIALOG1), hDlg, (DLGPROC)DialogProc1);
 			RECT rect1;
 			GetWindowRect(hDialog1, &rect1);
-			nWidth1 = rect1.right - rect1.left;
-			nHeight1 = rect1.bottom - rect1.top;
+			hChildDialogWidth = rect1.right - rect1.left;
+			hChildDialogHeight = rect1.bottom - rect1.top;
 		}
 		break;
  	case WM_SIZE:
 		{
 			RECT rect2;
 			GetClientRect(hDlg, &rect2);
-			nWidth2 = rect2.right;
-			nHeight2 = rect2.bottom;
+			int nWidth2 = rect2.right;
+			int nHeight2 = rect2.bottom;
 
-			SCROLLINFO si = {};
-			si.cbSize = sizeof(si);
+			SCROLLINFO si = { sizeof(si) };
 			si.fMask = SIF_ALL;
+
 			si.nMin = 0;
-			si.nMax = nHeight1;
+			si.nMax = hChildDialogHeight;
 			si.nPage = nHeight2;
 			si.nPos = 0;
 
 			SetScrollInfo(hDlg, SB_VERT, &si, TRUE);
+
+			si.nMin = 0;
+			si.nMax = hChildDialogWidth;
+			si.nPage = nWidth2;
+			si.nPos = 0;
+
+			SetScrollInfo(hDlg, SB_HORZ, &si, TRUE);
 		}
 		break;
 	case WM_MOUSEWHEEL:
@@ -82,43 +83,90 @@ INT_PTR CALLBACK DialogProc2(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 			}
 		}
 		break;
+	case WM_MOUSEHWHEEL:
+		{
+			int delta = GET_WHEEL_DELTA_WPARAM(wParam);
+			if (delta > 0) {
+				SendMessage(hDlg, WM_HSCROLL, SB_LINERIGHT, 0);
+			}
+			else {
+				SendMessage(hDlg, WM_HSCROLL, SB_LINELEFT, 0);
+			}
+		}
+		break;
 	case WM_VSCROLL:
 		{
 			SCROLLINFO si = {};
 			si.cbSize = sizeof(si);
 			si.fMask = SIF_ALL;
 			GetScrollInfo(hDlg, SB_VERT, &si);
-			int nPos = si.nPos;
 			switch (LOWORD(wParam))
 			{
 			case SB_TOP:
-				nPos = 0;
+				si.nPos = 0;
 				break;
 			case SB_BOTTOM:
-				nPos = nHeight1;
+				si.nPos = si.nMax - (int)si.nPage;
 				break;
 			case SB_LINEUP:
-				nPos -= 32;
+				si.nPos -= 16;
 				break;
 			case SB_LINEDOWN:
-				nPos += 32;
+				si.nPos += 16;
 				break;
 			case SB_PAGEUP:
-				nPos -= 32;
+				si.nPos -= 32;
 				break;
 			case SB_PAGEDOWN:
-				nPos += 32;
+				si.nPos += 32;
 				break;
 			case SB_THUMBTRACK:
-				nPos = si.nTrackPos;
+				si.nPos = si.nTrackPos;
 				break;
 			}
-			nPos = max(0, min(nHeight1, nPos));
-			si.nPos = nPos;
+			si.nPos = max(0, min(si.nPos, si.nMax - (int)si.nPage));
 			SetScrollInfo(hDlg, SB_VERT, &si, TRUE);
-			SetWindowPos(hDialog1, 0, 0, -nPos, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+			SetWindowPos(hDialog1, 0, xPos, -si.nPos, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+			yPos = -si.nPos;
 		}
 		break;
+	case WM_HSCROLL:
+		{
+			SCROLLINFO si = {};
+			si.cbSize = sizeof(si);
+			si.fMask = SIF_ALL;
+			GetScrollInfo(hDlg, SB_HORZ, &si);
+			switch (LOWORD(wParam))
+			{
+			case SB_LEFT:
+				si.nPos = 0;
+				break;
+			case SB_RIGHT:
+				si.nPos = si.nMax - (int)si.nPage;
+				break;
+			case SB_LINELEFT:
+				si.nPos -= 16;
+				break;
+			case SB_LINERIGHT:
+				si.nPos += 16;
+				break;
+			case SB_PAGELEFT:
+				si.nPos -= 32;
+				break;
+			case SB_PAGERIGHT:
+				si.nPos += 32;
+				break;
+			case SB_THUMBTRACK:
+				si.nPos = si.nTrackPos;
+				break;
+			}
+			si.nPos = max(0, min(si.nPos, si.nMax - (int)si.nPage));
+			SetScrollInfo(hDlg, SB_HORZ, &si, TRUE);
+			SetWindowPos(hDialog1, 0, -si.nPos, yPos, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+			xPos = -si.nPos;
+		}
+		break;
+
 	default:
 		return FALSE;
 	}
@@ -134,7 +182,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		hDialog2 = CreateDialog(GetModuleHandle(0), MAKEINTRESOURCE(IDD_DIALOG2), hWnd, (DLGPROC)DialogProc2);
 		break;
 	case WM_SIZE:
-		MoveWindow(hDialog2, 0, 0, 256, 256, TRUE);
+		MoveWindow(hDialog2, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
 		break;
 	case WM_COMMAND:
 		break;
